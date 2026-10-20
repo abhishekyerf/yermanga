@@ -2,6 +2,7 @@ import { getManga, getChapters } from "@/lib/md";
 import { FavButton, ContinueReading } from "@/components/Library";
 import { Badge, Empty } from "@/components/Card";
 import Link from "next/link";
+import ChapterLink from "@/components/ChapterLink";
 import { notFound } from "next/navigation";
 export const revalidate = 900;
 export async function generateMetadata({ params }: { params: { id: string } }) { const m = await getManga(params.id).catch(() => null); return { title: m?.title ?? "Series" }; }
@@ -11,7 +12,7 @@ export default async function Series({ params }: { params: { id: string } }) {
   const ch = await getChapters(params.id).catch(() => null);
   return <Detail cover={m.cover} title={m.title} meta={[m.author, m.year, m.status].filter(Boolean).join(" · ")} source="MangaDex" description={m.description.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").slice(0, 1200)} tags={m.tags.map((t) => ({ name: t.name, href: `/browse?tag=${t.id}` }))} firstHref={ch?.[0] ? `/read/${ch[0].id}` : null} id={m.id}>
     <section><h2 className="mb-5 text-[28px] font-bold">Chapters {ch && <span className="text-zinc-400">{ch.length}</span>}</h2>
-      {ch === null ? <Empty title="Couldn’t load chapters" sub="MangaDex may be busy. Refresh to try again." /> : ch.length ? <ul className="divide-y divide-black/5 overflow-hidden rounded-2xl bg-zinc-50 dark:divide-white/10 dark:bg-zinc-900/60">{[...ch].reverse().map((c) => <li key={c.id}><Link href={`/read/${c.id}`} className="flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-black/[.03] dark:hover:bg-white/5"><span className="truncate text-[15px] font-medium">{c.chapter ? `Chapter ${c.chapter}` : "Oneshot"}{c.title ? <span className="text-zinc-500"> — {c.title}</span> : ""}</span><span className="shrink-0 text-[13px] text-zinc-500">{new Date(c.publishAt).toLocaleDateString()}</span></Link></li>)}</ul> : <Empty title="No readable English chapters" sub="This series has no hosted English chapters on MangaDex." />}
+      {ch === null ? <Empty title="Couldn’t load chapters" sub="MangaDex may be busy. Refresh to try again." /> : ch.length ? <ul className="divide-y divide-black/5 overflow-hidden rounded-2xl bg-zinc-50 dark:divide-white/10 dark:bg-zinc-900/60">{[...ch].reverse().map((c) => <li key={c.id}><ChapterLink href={`/read/${c.id}`} className="flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-black/[.03] dark:hover:bg-white/5"><span className="truncate text-[15px] font-medium">{c.chapter ? `Chapter ${c.chapter}` : "Oneshot"}{c.title ? <span className="text-zinc-500"> — {c.title}</span> : ""}</span><span className="shrink-0 text-[13px] text-zinc-500">{new Date(c.publishAt).toLocaleDateString()}</span></ChapterLink></li>)}</ul> : <Empty title="No readable English chapters" sub="This series has no hosted English chapters on MangaDex." />}
     </section>
   </Detail>;
 }
@@ -26,7 +27,7 @@ export function Detail({ cover, title, meta, source, description, tags, firstHre
           <h1 className="text-4xl font-bold leading-[1.05] sm:text-5xl">{title}</h1>
           <p className="text-[15px] text-zinc-500">{meta}</p>
           <div className="flex flex-wrap justify-center gap-3 sm:justify-start">
-            {firstHref && <Link href={firstHref} className="rounded-full bg-blue-600 px-6 py-2.5 text-[15px] font-semibold text-white transition hover:bg-blue-500 active:scale-95">Read from start</Link>}
+            {firstHref && <ChapterLink href={firstHref} className="rounded-full bg-blue-600 px-6 py-2.5 text-[15px] font-semibold text-white transition hover:bg-blue-500 active:scale-95">Read from start</ChapterLink>}
             <ContinueReading mangaId={id} /><FavButton m={{ id, title, cover, href }} />
           </div>
         </div>

@@ -10,10 +10,26 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   const [mode, setMode] = useState<"book" | "scroll" | null>(null);
   const [page, setPage] = useState(0);
   const [ready, setReady] = useState(false);
+  const [mobile, setMobile] = useState(false);
+  const [ui, setUi] = useState(true);
+  const [fit, setFit] = useState<number | null>(null);
+  const hideT = useRef<ReturnType<typeof setTimeout>>();
   const wrap = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null), flip = useRef<any>(null), imgs = useRef<HTMLImageElement[]>([]);
   const r = useRouter(); const total = pages.length; const posKey = `ym-pos-${storageKey}`;
 
   useEffect(() => { setMode(localStorage.getItem("ym-mode") === "scroll" ? "scroll" : "book"); }, []);
+  useEffect(() => { const mq = matchMedia("(pointer: coarse), (max-width: 640px)"); const f = () => setMobile(mq.matches); f(); mq.addEventListener("change", f); return () => mq.removeEventListener("change", f); }, []);
+  const immersive = mobile && mode === "book";
+  // Immersive: size the book to fit the viewport (100dvh minus safe areas), lock page scroll, auto-hide controls.
+  useEffect(() => {
+    if (!immersive) { setFit(null); return; }
+    const calc = () => { const h = (window.visualViewport?.height ?? innerHeight) - 8, w = innerWidth; setFit(Math.floor(Math.min(w, (h * 560) / 820))); };
+    calc(); addEventListener("resize", calc); const ov = document.body.style.overflow; document.body.style.overflow = "hidden";
+    return () => { removeEventListener("resize", calc); document.body.style.overflow = ov; };
+  }, [immersive]);
+  const poke = useCallback((show = true) => { setUi(show); clearTimeout(hideT.current); if (show) hideT.current = setTimeout(() => setUi(false), 3000); }, []);
+  useEffect(() => { if (immersive) poke(true); else { clearTimeout(hideT.current); setUi(true); } }, [immersive, poke]);
+  const tryFs = () => { const d = document.documentElement as any; if (!document.fullscreenElement && d.requestFullscreen) d.requestFullscreen({ navigationUI: "hide" }).catch(() => {}); };
   const loadAround = useCallback((p: number) => { for (let k = Math.max(0, p - 2); k <= Math.min(total - 1, p + PRELOAD); k++) { const im = imgs.current[k]; if (im && !im.src) im.src = pages[k]; } }, [pages, total]);
 
   // Book mode: StPageFlip, built imperatively because PageFlip.destroy() removes its own root node.
@@ -26,13 +42,13 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
     loadAround(start);
     import("page-flip").then(({ PageFlip }) => {
       if (cancelled) return;
-      pf = new PageFlip(root, { width: 560, height: 820, size: "stretch", minWidth: 260, maxWidth: 900, minHeight: 380, maxHeight: 1320, maxShadowOpacity: 0.45, showCover: false, usePortrait: true, mobileScrollSupport: false, flippingTime: 650, startPage: start, autoSize: true, swipeDistance: 25 });
+      pf = new PageFlip(root, { width: 560, height: 820, size: "stretch", minWidth: 260, maxWidth: 900, minHeight: 380, maxHeight: 1320, maxShadowOpacity: 0.45, showCover: false, usePortrait: true, mobileScrollSupport: false, flippingTime: 650, startPage: start, autoSize: true, swipeDistance: 25, disableFlipByClick: true });
       pf.loadFromHTML(Array.from(root.children));
       pf.on("flip", (e: any) => { setPage(e.data); loadAround(e.data); localStorage.setItem(posKey, String(e.data)); });
       flip.current = pf; setPage(start); setReady(true);
     });
     return () => { cancelled = true; flip.current = null; try { pf?.destroy(); } catch {} root.remove(); };
-  }, [mode, pages]);
+  }, [mode, pages, fit]);
 
   // Scroll mode: remember last page via IntersectionObserver.
   useEffect(() => {
@@ -45,7 +61,7 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   }, [mode, pages]);
 
   const next = useCallback(() => { const pf = flip.current; if (mode === "book" && pf) { const last = pf.getCurrentPageIndex() + (pf.getOrientation() === "landscape" ? 2 : 1) >= total; if (!last) return pf.flipNext(); } if (nextHref) r.push(nextHref); }, [mode, total, nextHref, r]);
-  const prev = useCallback(() => { const pf = flip.current; if (mode === "book" && pf && pf.getCurrentPageIndex() > 0) return pf.flipPrev(); if (prevHref) r.push(prevHref); }, [mode, prevHref, r]);
+  const prev = useCallback(() => { const pf = flip.current; if (mode === "book" && pf && pf.getCurrentPageIndex() > 0) { const i = pf.getCurrentPageIndex(); pf.flipPrev("top"); setTimeout(() => { if (flip.current === pf && pf.getCurrentPageIndex() === i && pf.getState?.() === "read") { pf.turnToPrevPage(); const n = pf.getCurrentPageIndex(); setPage(n); loadAround(n); localStorage.setItem(posKey, String(n)); } }, 120); return; } if (prevHref) r.push(prevHref); }, [mode, prevHref, r, loadAround, posKey]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -57,7 +73,11 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
     addEventListener("keydown", h); return () => removeEventListener("keydown", h);
   }, [mode, next, prev, nextHref, prevHref, r]);
 
-  const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen(); else wrap.current?.requestFullscreen?.().catch(() => {}); };
+  const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); else tryFs(); };
+  const close = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); r.push(backHref); };
+  const down = useRef<{ x: number; y: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => { down.current = { x: e.clientX, y: e.clientY }; if (immersive) tryFs(); };
+  const onUp = (e: React.PointerEvent) => { const d = down.current; down.current = null; if (!immersive || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; const x = e.clientX / innerWidth; if (x > 0.3 && x < 0.7) poke(!ui); };
   const sw = (m: "book" | "scroll") => { localStorage.setItem("ym-mode", m); setMode(m); };
   const pct = total ? Math.round(((page + 1) / total) * 100) : 0;
 
@@ -68,6 +88,29 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
     <Link href={backHref} className="text-[13px] text-zinc-500 hover:underline">All chapters</Link>
     {nextHref ? <Link href={nextHref} className="rounded-full bg-black px-5 py-2 text-[14px] font-medium text-white dark:bg-white dark:text-black">Next →</Link> : <span />}
   </div>);
+
+  if (immersive) return (
+    <div ref={wrap} data-testid="immersive" onPointerDown={onDown} onPointerUp={onUp} className="fixed inset-0 z-50 flex h-[100dvh] w-screen touch-none select-none items-center justify-center overflow-hidden bg-black text-white" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)", paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}>
+      {!ready && <div className="shimmer aspect-[56/82] rounded" style={{ width: fit ?? "90vw" }} />}
+      <div ref={host} data-testid="book" style={{ width: fit ?? undefined }} className={`transition-opacity duration-500 ${ready ? "opacity-100" : "absolute opacity-0"}`} />
+      {ready && <><button aria-label="Previous page" onClick={prev} className="absolute inset-y-0 left-0 z-10 w-[30%]" /><button aria-label="Next page" onClick={next} className="absolute inset-y-0 right-0 z-10 w-[30%]" /></>}
+      <div className={`pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300 ${ui ? "opacity-100" : "opacity-0"}`}>
+        <div className={`flex items-center gap-3 bg-gradient-to-b from-black/80 to-transparent px-4 pb-6 text-[13px] ${ui ? "pointer-events-auto" : ""}`} style={{ paddingTop: "calc(env(safe-area-inset-top) + 10px)" }}>
+          <button aria-label="Close reader" onClick={close} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/15 text-lg backdrop-blur-md">✕</button>
+          <span className="truncate font-semibold">{label}</span>
+          <button onClick={() => sw("scroll")} className="ml-auto shrink-0 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur-md">Scroll</button>
+        </div>
+        <div className={`bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 ${ui ? "pointer-events-auto" : ""}`} style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
+          <div className="h-1 overflow-hidden rounded-full bg-white/20"><div className="h-full bg-white transition-all duration-300" style={{ width: `${pct}%` }} /></div>
+          <div className="mt-3 flex items-center justify-between text-[13px]">
+            {prevHref ? <Link href={prevHref} onClick={tryFs} className="rounded-full bg-white/15 px-4 py-1.5 backdrop-blur-md">← Prev</Link> : <span />}
+            <span className="tabular-nums text-white/80" data-testid="counter">{page + 1} / {total}</span>
+            {nextHref ? <Link href={nextHref} onClick={tryFs} className="rounded-full bg-white/15 px-4 py-1.5 backdrop-blur-md">Next →</Link> : <span />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div ref={wrap} className="-mx-5 bg-zinc-50 px-5 [&:fullscreen]:overflow-auto [&:fullscreen]:bg-zinc-900 dark:bg-black">
