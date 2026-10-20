@@ -11,5 +11,5 @@ export default async function Read({ params }: { params: { id: string } }) {
   let i = chapters.findIndex((c) => c.id === params.id); if (i < 0 && meta.chapter) i = chapters.findIndex((c) => c.chapter === meta.chapter);
   const prev = i > 0 ? `/read/${chapters[i - 1].id}` : null, next = i >= 0 && i < chapters.length - 1 ? `/read/${chapters[i + 1].id}` : null;
   const label = `${manga.title} · ${meta.chapter ? `Ch. ${meta.chapter}` : "Oneshot"}`;
-  return (<><TrackHistory mangaId={manga.id} title={manga.title} cover={manga.cover} chapterId={params.id} chapter={meta.chapter} /><Reader pages={pages} prevHref={prev} nextHref={next} backHref={`/series/${manga.id}`} label={label} storageKey={params.id} /></>);
+  return (<><TrackHistory mangaId={manga.id} title={manga.title} cover={manga.cover} chapterId={params.id} chapter={meta.chapter} /><Reader longStrip={manga.tags.some((t) => t.name === "Long Strip")} pages={pages} prevHref={prev} nextHref={next} backHref={`/series/${manga.id}`} label={label} storageKey={params.id} /></>);
 }

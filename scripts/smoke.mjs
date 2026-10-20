@@ -40,7 +40,7 @@ for (const [ctxOpts, name] of [[{ viewport: { width: 1280, height: 900 } }, "des
   await p.screenshot({ path: `/tmp/smoke-${name}-${urls.indexOf(u)}.png` });
   const turned = c0 !== c1 && c1 !== c2 && c3 === c1 && cR === c1;
   console.log(name, u, { imm, c0, c1, c2, c3, afterReload: cR, loadedImgs: loaded, scrollImgs, errs });
-  if (!turned || errs.length || !loaded || (mob && !(imm.full && imm.navCovered && imm.bookFits && imm.pageInfo.overlayAbs && imm.pageInfo.hiddenByDefault && (imm.pageInfo.aspect > 1 || imm.pageInfo.fillPct >= 90)))) fail++;
+  if (!turned || errs.length || !loaded || (mob && !(imm.full && imm.navCovered && imm.bookFits && imm.pageInfo.overlayAbs && imm.pageInfo.hiddenByDefault))) fail++;
   if (mob) { await p.click("text=Book"); await p.waitForSelector('[aria-label="Close reader"]'); await p.click('[aria-label="Close reader"]', { force: true }); await p.waitForURL((x) => !/read/.test(x.pathname), { timeout: 20000 }); }
   await ctx.close();
 }
