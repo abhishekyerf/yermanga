@@ -1,5 +1,6 @@
 import { UA } from "@/lib/md";
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 30;
 const allowed = (h: string) => h === "uploads.mangadex.org" || h.endsWith(".mangadex.network") || h === "iiif.archive.org" || h === "archive.org" || h.endsWith(".us.archive.org");
 export async function GET(req: Request) {
   const u = new URL(req.url).searchParams.get("u");
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
   try {
     const r = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
     const ct = r.headers.get("content-type") ?? "";
-    if (!r.ok || !ct.startsWith("image/")) return new Response("upstream " + r.status, { status: 502 });
+    if (!r.ok || !ct.startsWith("image/")) return new Response("upstream " + r.status, { status: 502, headers: { "x-upstream-url": r.url } });
     return new Response(r.body, { headers: { "Content-Type": ct, "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable" } });
   } catch { return new Response("upstream timeout", { status: 504 }); }
 }
