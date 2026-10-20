@@ -1,8 +1,9 @@
+// Desktop book-reader regression test (mobile is covered by smoke-mobile.mjs).
 import { chromium, devices } from "playwright";
 const base = process.env.BASE || "http://localhost:3000";
 const urls = [process.argv[2] || "/classics/atomic-war-01/read", process.argv[3]].filter(Boolean);
 const b = await chromium.launch(); let fail = 0;
-for (const [ctxOpts, name] of [[{ viewport: { width: 1280, height: 900 } }, "desktop"], [devices["iPhone 13"], "mobile"], [{ viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, userAgent: devices["Pixel 5"].userAgent }, "android"]]) for (const u of urls) {
+for (const [ctxOpts, name] of [[{ viewport: { width: 1280, height: 900 } }, "desktop"]].concat(process.env.LEGACY_MOBILE ? [ [devices["iPhone 13"], "mobile"], [{ viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, userAgent: devices["Pixel 5"].userAgent }, "android"]] : [])) for (const u of urls) {
   const ctx = await b.newContext(ctxOpts); const p = await ctx.newPage(); const errs = []; const mob = name !== "desktop";
   p.on("pageerror", (e) => errs.push("pageerror " + e.message)); p.on("console", (m) => m.type() === "error" && errs.push("console " + m.text()));
   await p.goto(base + u, { waitUntil: "networkidle", timeout: 90000 });
