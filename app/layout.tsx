@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Header from "@/components/Header";
-export const metadata: Metadata = { title: { default: "YerManga", template: "%s · YerManga" }, description: "A clean manga, webtoon and classic-comics reader powered by MangaDex and the Internet Archive." };
-export const viewport: Viewport = { themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#000" }, { color: "#fff" }] };
+export const metadata: Metadata = { title: { default: "YerManga", template: "%s · YerManga" }, description: "A clean manga, webtoon and classic-comics reader powered by MangaDex and the Internet Archive.", applicationName: "YerManga", appleWebApp: { capable: true, title: "YerManga", statusBarStyle: "black-translucent" }, other: { "mobile-web-app-capable": "yes" } };
+export const viewport: Viewport = { themeColor: "#000000", viewportFit: "cover", width: "device-width", initialScale: 1 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (<html lang="en" className="dark" suppressHydrationWarning>
     <head><script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('ym-theme')==='light')document.documentElement.classList.remove('dark')}catch(e){}` }} /></head>

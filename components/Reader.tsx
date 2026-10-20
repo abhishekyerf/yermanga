@@ -12,7 +12,8 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   const [ready, setReady] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [ui, setUi] = useState(true);
-  const [fit, setFit] = useState<number | null>(null);
+  const [fit, setFit] = useState<{ w: number; h: number } | null>(null);
+  const [hint, setHint] = useState(false);
   const hideT = useRef<ReturnType<typeof setTimeout>>();
   const wrap = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null), flip = useRef<any>(null), imgs = useRef<HTMLImageElement[]>([]);
   const r = useRouter(); const total = pages.length; const posKey = `ym-pos-${storageKey}`;
@@ -23,32 +24,49 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   // Immersive: size the book to fit the viewport (100dvh minus safe areas), lock page scroll, auto-hide controls.
   useEffect(() => {
     if (!immersive) { setFit(null); return; }
-    const calc = () => { const h = (window.visualViewport?.height ?? innerHeight) - 8, w = innerWidth; setFit(Math.floor(Math.min(w, (h * 560) / 820))); };
-    calc(); addEventListener("resize", calc); const ov = document.body.style.overflow; document.body.style.overflow = "hidden";
-    return () => { removeEventListener("resize", calc); document.body.style.overflow = ov; };
+    // Full viewport book: 100vw x visual viewport height; rebuilt (debounced) on resize/rotate.
+    let t: ReturnType<typeof setTimeout>;
+    const calc = () => { const vv = window.visualViewport; const w = Math.round(vv?.width ?? innerWidth), h = Math.round(vv?.height ?? innerHeight); setFit((f) => (f && f.w === w && f.h === h ? f : { w, h })); };
+    const deb = () => { clearTimeout(t); t = setTimeout(calc, 150); };
+    calc(); addEventListener("resize", deb); addEventListener("orientationchange", deb); window.visualViewport?.addEventListener("resize", deb);
+    const ov = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const ios = /iP(hone|od|ad)/.test(navigator.userAgent) && !(navigator as any).standalone && !matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
+    if (ios && !localStorage.getItem("ym-a2hs")) setHint(true);
+    return () => { clearTimeout(t); removeEventListener("resize", deb); removeEventListener("orientationchange", deb); window.visualViewport?.removeEventListener("resize", deb); document.body.style.overflow = ov; };
   }, [immersive]);
   const poke = useCallback((show = true) => { setUi(show); clearTimeout(hideT.current); if (show) hideT.current = setTimeout(() => setUi(false), 3000); }, []);
-  useEffect(() => { if (immersive) poke(true); else { clearTimeout(hideT.current); setUi(true); } }, [immersive, poke]);
+  useEffect(() => { if (immersive) { setUi(true); clearTimeout(hideT.current); hideT.current = setTimeout(() => setUi(false), 1500); } else { clearTimeout(hideT.current); setUi(true); } }, [immersive, poke]);
   const tryFs = () => { const d = document.documentElement as any; if (!document.fullscreenElement && d.requestFullscreen) d.requestFullscreen({ navigationUI: "hide" }).catch(() => {}); };
   const loadAround = useCallback((p: number) => { for (let k = Math.max(0, p - 2); k <= Math.min(total - 1, p + PRELOAD); k++) { const im = imgs.current[k]; if (im && !im.src) im.src = pages[k]; } }, [pages, total]);
 
   // Book mode: StPageFlip, built imperatively because PageFlip.destroy() removes its own root node.
   useEffect(() => {
-    if (mode !== "book" || !host.current || !total) return;
+    if (mode !== "book" || !host.current || !total || (immersive && !fit)) return;
     let pf: any, cancelled = false; setReady(false);
     const root = document.createElement("div"); host.current.appendChild(root);
-    imgs.current = pages.map((_, k) => { const d = document.createElement("div"); d.className = "book-page"; const im = document.createElement("img"); im.alt = `Page ${k + 1}`; im.decoding = "async"; d.appendChild(im); root.appendChild(d); return im; });
+    imgs.current = pages.map((_, k) => {
+      const d = document.createElement("div"); d.className = immersive ? "book-page imm" : "book-page";
+      const im = document.createElement("img"); im.alt = `Page ${k + 1}`; im.decoding = "async";
+      if (immersive && fit) im.onload = () => {
+        // Fill the screen when the page's aspect is close to the viewport's; otherwise contain on a blurred copy of the page.
+        const ra = im.naturalWidth / im.naturalHeight, rv = fit.w / fit.h, close = ra < 0.9 || Math.max(ra, rv) / Math.min(ra, rv) < 1.3; // portrait pages fill the height
+        d.dataset.fit = close ? "cover" : "contain";
+        if (!close && !d.querySelector(".bg")) { const bg = document.createElement("img"); bg.className = "bg"; bg.alt = ""; bg.src = im.src; d.prepend(bg); }
+      };
+      d.appendChild(im); root.appendChild(d); return im;
+    });
     const start = Math.min(Number(localStorage.getItem(posKey)) || 0, total - 1);
     loadAround(start);
     import("page-flip").then(({ PageFlip }) => {
       if (cancelled) return;
-      pf = new PageFlip(root, { width: 560, height: 820, size: "stretch", minWidth: 260, maxWidth: 900, minHeight: 380, maxHeight: 1320, maxShadowOpacity: 0.45, showCover: false, usePortrait: true, mobileScrollSupport: false, flippingTime: 650, startPage: start, autoSize: true, swipeDistance: 25, disableFlipByClick: true });
+      const sz = immersive && fit ? { width: fit.w, height: fit.h, size: "fixed" } : { width: 560, height: 820, size: "stretch", minWidth: 260, maxWidth: 900, minHeight: 380, maxHeight: 1320 };
+      pf = new PageFlip(root, { ...sz, maxShadowOpacity: 0.45, showCover: false, usePortrait: true, mobileScrollSupport: false, flippingTime: 650, startPage: start, autoSize: true, swipeDistance: 25, disableFlipByClick: true });
       pf.loadFromHTML(Array.from(root.children));
       pf.on("flip", (e: any) => { setPage(e.data); loadAround(e.data); localStorage.setItem(posKey, String(e.data)); });
       flip.current = pf; setPage(start); setReady(true);
     });
     return () => { cancelled = true; flip.current = null; try { pf?.destroy(); } catch {} root.remove(); };
-  }, [mode, pages, fit]);
+  }, [mode, pages, fit, immersive]);
 
   // Scroll mode: remember last page via IntersectionObserver.
   useEffect(() => {
@@ -77,7 +95,7 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   const close = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); r.push(backHref); };
   const down = useRef<{ x: number; y: number } | null>(null);
   const onDown = (e: React.PointerEvent) => { down.current = { x: e.clientX, y: e.clientY }; if (immersive) tryFs(); };
-  const onUp = (e: React.PointerEvent) => { const d = down.current; down.current = null; if (!immersive || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; const x = e.clientX / innerWidth; if (x > 0.3 && x < 0.7) poke(!ui); };
+  const onUp = (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest("a,button:not([aria-label$='page'])")) return;  const d = down.current; down.current = null; if (!immersive || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return; const x = e.clientX / innerWidth; if (x > 0.3 && x < 0.7) poke(!ui); };
   const sw = (m: "book" | "scroll") => { localStorage.setItem("ym-mode", m); setMode(m); };
   const pct = total ? Math.round(((page + 1) / total) * 100) : 0;
 
@@ -90,17 +108,20 @@ export default function Reader({ pages, prevHref, nextHref, backHref, label, sto
   </div>);
 
   if (immersive) return (
-    <div ref={wrap} data-testid="immersive" onPointerDown={onDown} onPointerUp={onUp} className="fixed inset-0 z-50 flex h-[100dvh] w-screen touch-none select-none items-center justify-center overflow-hidden bg-black text-white" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)", paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}>
-      {!ready && <div className="shimmer aspect-[56/82] rounded" style={{ width: fit ?? "90vw" }} />}
-      <div ref={host} data-testid="book" style={{ width: fit ?? undefined }} className={`transition-opacity duration-500 ${ready ? "opacity-100" : "absolute opacity-0"}`} />
+    <div ref={wrap} data-testid="immersive" onPointerDown={onDown} onPointerUp={onUp} className="fixed inset-0 z-50 h-[100dvh] w-screen touch-none select-none overflow-hidden bg-black text-white" style={fit ? { height: fit.h } : undefined}>
+      {!ready && <div className="shimmer absolute inset-0" />}
+      <div ref={host} data-testid="book" style={fit ? { width: fit.w, height: fit.h } : undefined} className={`absolute inset-0 transition-opacity duration-500 ${ready ? "opacity-100" : "opacity-0"}`} />
+      {hint && <div className="absolute inset-x-4 z-30 flex items-center gap-3 rounded-2xl bg-black/60 px-4 py-3 text-[13px] backdrop-blur-xl" style={{ bottom: "calc(env(safe-area-inset-bottom) + 84px)" }} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+        <span className="flex-1">For true full screen, tap Share → Add to Home Screen.</span>
+        <button aria-label="Dismiss hint" onClick={() => { localStorage.setItem("ym-a2hs", "1"); setHint(false); }} className="shrink-0 rounded-full bg-white/20 px-3 py-1">OK</button></div>}
       {ready && <><button aria-label="Previous page" onClick={prev} className="absolute inset-y-0 left-0 z-10 w-[30%]" /><button aria-label="Next page" onClick={next} className="absolute inset-y-0 right-0 z-10 w-[30%]" /></>}
       <div className={`pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300 ${ui ? "opacity-100" : "opacity-0"}`}>
-        <div className={`flex items-center gap-3 bg-gradient-to-b from-black/80 to-transparent px-4 pb-6 text-[13px] ${ui ? "pointer-events-auto" : ""}`} style={{ paddingTop: "calc(env(safe-area-inset-top) + 10px)" }}>
+        <div className={`flex items-center gap-3 bg-black/45 px-4 pb-3 backdrop-blur-xl text-[13px] ${ui ? "pointer-events-auto" : ""}`} style={{ paddingTop: "calc(env(safe-area-inset-top) + 10px)" }}>
           <button aria-label="Close reader" onClick={close} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/15 text-lg backdrop-blur-md">✕</button>
           <span className="truncate font-semibold">{label}</span>
           <button onClick={() => sw("scroll")} className="ml-auto shrink-0 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur-md">Scroll</button>
         </div>
-        <div className={`bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 ${ui ? "pointer-events-auto" : ""}`} style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
+        <div className={`bg-black/45 px-4 pt-3 backdrop-blur-xl ${ui ? "pointer-events-auto" : ""}`} style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
           <div className="h-1 overflow-hidden rounded-full bg-white/20"><div className="h-full bg-white transition-all duration-300" style={{ width: `${pct}%` }} /></div>
           <div className="mt-3 flex items-center justify-between text-[13px]">
             {prevHref ? <Link href={prevHref} onClick={tryFs} className="rounded-full bg-white/15 px-4 py-1.5 backdrop-blur-md">← Prev</Link> : <span />}
