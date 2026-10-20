@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, Roboto, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
+h1, h2, h3 { letter-spacing: -0.025em; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp .5s cubic-bezier(.2,.8,.2,1) both; }
+.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { scrollbar-width: none; }
+.shimmer { background: linear-gradient(90deg, rgba(127,127,127,.12) 25%, rgba(127,127,127,.22) 50%, rgba(127,127,127,.12) 75%); background-size: 200% 100%; animation: sh 1.4s infinite; }
+@keyframes sh { to { background-position: -200% 0; } }
+.book-page { background: #fff; overflow: hidden; }
+.book-page img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
+@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }

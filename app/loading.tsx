@@ -1,2 +1,2 @@
 import { GridSkeleton } from "@/components/Card";
-export default function L() { return <div className="space-y-10"><div className="h-72 animate-pulse rounded-2xl bg-zinc-200 dark:bg-zinc-800 sm:h-96" /><GridSkeleton /></div>; }
+export default function L() { return <div className="space-y-16"><div className="shimmer h-[340px] rounded-[28px] sm:h-[440px]" /><div className="shimmer h-8 w-48 rounded-lg" /><GridSkeleton /></div>; }

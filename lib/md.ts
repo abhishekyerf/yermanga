@@ -15,7 +15,7 @@ function qs(p: Record<string, string | number | string[] | undefined>) {
 }
 
 export async function md<T = any>(path: string, params: Record<string, any> = {}, revalidate = 3600): Promise<T> {
-  const r = await fetch(`${API}${path}${Object.keys(params).length ? "?" + qs(params) : ""}`, { headers: { "User-Agent": UA }, next: { revalidate } });
+  const r = await fetch(`${API}${path}${Object.keys(params).length ? "?" + qs(params) : ""}`, { headers: { "User-Agent": UA }, next: { revalidate }, signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error(`MangaDex ${r.status} ${path}`);
   return r.json();
 }
@@ -42,7 +42,22 @@ const base = { "contentRating[]": RATINGS, "includes[]": ["cover_art", "author"]
 export async function listManga(opts: { order?: string; limit?: number; offset?: number; title?: string; tags?: string[] } = {}) {
   const { order = "followedCount", limit = 24, offset = 0, title, tags } = opts;
   const j = await md("/manga", { ...base, limit, offset, title, "includedTags[]": tags, [`order[${order}]`]: "desc" }, 1800);
-  return { items: (j.data as any[]).map(toManga), total: j.total as number };
+  const items = await filterReadable((j.data as any[]).map(toManga));
+  return { items, total: j.total as number };
+}
+
+// MangaDex's hasAvailableChapters also counts external-link-only chapters (licensed titles), so verify each series
+// has at least one hosted English chapter. Results are cached for a day; requests are throttled to respect rate limits.
+async function hasReadable(id: string) {
+  try {
+    const j = await md(`/manga/${id}/feed`, { "translatedLanguage[]": ["en"], "contentRating[]": RATINGS, limit: 1, includeExternalUrl: 0, includeFuturePublishAt: 0 }, 86400);
+    return j.total > 0;
+  } catch { return true; }
+}
+async function filterReadable(items: Manga[]) {
+  const ok: boolean[] = [];
+  for (let i = 0; i < items.length; i += 4) ok.push(...(await Promise.all(items.slice(i, i + 4).map((m) => hasReadable(m.id)))));
+  return items.filter((_, i) => ok[i]);
 }
 
 export async function getManga(id: string) { const j = await md(`/manga/${id}`, { "includes[]": ["cover_art", "author"] }); return toManga(j.data); }

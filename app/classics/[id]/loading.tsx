@@ -1,0 +1,1 @@
+export default function L() { return <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end"><div className="shimmer aspect-[2/3] w-44 rounded-2xl sm:w-60" /><div className="w-full flex-1 space-y-4">{[30, 70, 40].map((w, i) => <div key={i} style={{ width: `${w}%` }} className="shimmer h-6 rounded-lg" />)}</div></div>; }
